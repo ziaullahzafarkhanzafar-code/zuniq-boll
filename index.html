@@ -1,0 +1,1773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <title>Rolling Physics Odyssey 3D</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- FontAwesome for crisp UI icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #0d1117;
+      color: #f0f6fc;
+    }
+    #game-canvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      outline: none;
+    }
+    /* Custom glassmorphism UI styling */
+    .glass-panel {
+      background: rgba(13, 17, 23, 0.72);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+    .glass-button {
+      background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      transition: all 0.18s ease-in-out;
+    }
+    .glass-button:active {
+      transform: scale(0.95);
+      background: rgba(255, 255, 255, 0.28);
+    }
+    /* Touch Joystick */
+    #joystick-zone {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      border: 2px dashed rgba(255, 255, 255, 0.25);
+      background: rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      touch-action: none;
+    }
+    #joystick-knob {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #60a5fa, #2563eb);
+      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.6);
+      transform: translate(0px, 0px);
+      transition: transform 0.05s ease-out;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="w-full h-full relative overflow-hidden select-none">
+
+  <!-- Main WebGL 3D Canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Heads Up Display (HUD) -->
+  <div id="hud" class="absolute inset-0 pointer-events-none p-4 md:p-6 flex flex-col justify-between">
+    <!-- Top Bar: Progress, Level, Gem Counter, Health, Timer -->
+    <div class="flex items-center justify-between w-full max-w-5xl mx-auto gap-3">
+      <!-- Level and Health -->
+      <div class="glass-panel rounded-2xl px-4 py-2.5 flex items-center space-x-4 pointer-events-auto">
+        <div class="flex items-center space-x-2">
+          <span class="text-xs uppercase font-bold tracking-widest text-blue-400">STAGE</span>
+          <span id="level-display" class="font-extrabold text-xl text-white">01</span>
+        </div>
+        <div class="h-5 w-px bg-white/20"></div>
+        <div class="flex items-center space-x-1.5 text-rose-500" id="hearts-container">
+          <i class="fa-solid fa-heart text-base animate-pulse"></i>
+          <i class="fa-solid fa-heart text-base animate-pulse"></i>
+          <i class="fa-solid fa-heart text-base animate-pulse"></i>
+        </div>
+      </div>
+
+      <!-- Stage Progress Track -->
+      <div class="glass-panel rounded-2xl px-4 py-2.5 flex-1 max-w-sm hidden sm:flex flex-col justify-center">
+        <div class="flex justify-between text-xs font-semibold text-slate-300 mb-1">
+          <span>PROGRESS</span>
+          <span id="progress-text">0%</span>
+        </div>
+        <div class="w-full bg-slate-700/60 h-2.5 rounded-full overflow-hidden p-0.5">
+          <div id="progress-bar" class="h-full bg-gradient-to-r from-blue-500 via-indigo-400 to-emerald-400 rounded-full w-0 transition-all duration-200"></div>
+        </div>
+      </div>
+
+      <!-- Gems & Timer & Controls Help -->
+      <div class="glass-panel rounded-2xl px-4 py-2.5 flex items-center space-x-4 pointer-events-auto">
+        <div class="flex items-center space-x-2">
+          <i class="fa-solid fa-gem text-amber-400 text-lg"></i>
+          <span id="gems-display" class="font-bold text-lg text-amber-200">0</span>
+        </div>
+        <div class="h-5 w-px bg-white/20"></div>
+        <div class="flex items-center space-x-2 text-slate-200">
+          <i class="fa-regular fa-clock text-cyan-400"></i>
+          <span id="timer-display" class="font-mono font-bold text-base">00:00.0</span>
+        </div>
+        <button id="audio-toggle-btn" class="glass-button p-2 w-9 h-9 rounded-xl flex items-center justify-center text-slate-300 hover:text-white" title="Toggle Sound">
+          <i id="audio-icon" class="fa-solid fa-volume-high"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom Overlay: Speedometer & Controls Hint / Virtual Buttons -->
+    <div class="flex items-end justify-between w-full max-w-5xl mx-auto mb-2">
+      <!-- Speedometer and Dynamics Indicator -->
+      <div class="glass-panel rounded-2xl p-3.5 flex items-center space-x-3 pointer-events-auto">
+        <div class="relative w-14 h-14 flex items-center justify-center">
+          <svg class="w-full h-full -rotate-90 transform" viewBox="0 0 36 36">
+            <path class="text-slate-800" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+            <path id="speed-gauge" class="text-cyan-400 transition-all duration-75" stroke-dasharray="0, 100" stroke-width="3.5" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+            <span id="speed-val" class="font-black text-sm tracking-tight text-white leading-none">0</span>
+            <span class="text-[9px] uppercase font-bold text-slate-400">km/h</span>
+          </div>
+        </div>
+        <div class="hidden sm:block text-xs text-slate-400 font-medium">
+          <div>Ball: <span id="ball-material-name" class="text-cyan-300 font-semibold">Tungsten Alloy</span></div>
+          <div class="text-[10px] text-slate-400">Drag mouse/touch to look</div>
+        </div>
+      </div>
+
+      <!-- Action Buttons (Jump & Camera Reset) -->
+      <div class="flex items-center space-x-3 pointer-events-auto">
+        <button id="btn-camera-reset" class="glass-button w-14 h-14 rounded-2xl flex flex-col items-center justify-center text-slate-200 text-xs font-semibold shadow-lg">
+          <i class="fa-solid fa-arrows-to-eye text-base mb-0.5"></i>
+          <span>View</span>
+        </button>
+        <button id="btn-jump" class="glass-button w-16 h-16 rounded-2xl flex flex-col items-center justify-center bg-blue-600/40 border-blue-400/50 text-white font-bold shadow-xl active:bg-blue-500/70">
+          <i class="fa-solid fa-arrow-up text-lg mb-0.5"></i>
+          <span class="text-[11px] tracking-wider uppercase">JUMP</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Onscreen Joystick -->
+  <div id="joystick-zone" class="hidden sm:hidden pointer-events-auto">
+    <div id="joystick-knob"></div>
+  </div>
+
+  <!-- Start / Victory / Game Over Modal Overlays -->
+  <div id="overlay-screen" class="absolute inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4 transition-opacity duration-300">
+    <div class="glass-panel max-w-md w-full rounded-3xl p-6 sm:p-8 text-center relative border border-white/20 shadow-2xl">
+      <!-- Glowing badge icon -->
+      <div id="modal-icon-bg" class="w-20 h-20 mx-auto rounded-3xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center mb-5 text-blue-400 text-3xl shadow-lg shadow-blue-500/20">
+        <i id="modal-icon" class="fa-solid fa-circle-dot"></i>
+      </div>
+
+      <h1 id="modal-title" class="text-2xl sm:text-3xl font-black text-white tracking-tight mb-2">SPHERE ODYSSEY 3D</h1>
+      <p id="modal-desc" class="text-sm text-slate-300 leading-relaxed mb-6">
+        Guide the physics sphere over dangerous floating tracks, avoid swinging pendulums, smash wooden boxes, bounce on trampolines, and collect energy gems!
+      </p>
+
+      <!-- Key controls summary -->
+      <div class="bg-black/30 rounded-2xl p-3 mb-6 text-xs text-slate-300 grid grid-cols-2 gap-2 text-left">
+        <div class="flex items-center space-x-2">
+          <span class="px-2 py-1 bg-white/10 rounded font-mono text-cyan-300">WASD / ↑←↓→</span>
+          <span>Roll Sphere</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="px-2 py-1 bg-white/10 rounded font-mono text-cyan-300">SPACE</span>
+          <span>Jump</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="px-2 py-1 bg-white/10 rounded font-mono text-cyan-300">Mouse Drag</span>
+          <span>Rotate Orbit</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="px-2 py-1 bg-white/10 rounded font-mono text-cyan-300">Touch</span>
+          <span>Virtual Joystick</span>
+        </div>
+      </div>
+
+      <!-- Action Button -->
+      <button id="modal-action-btn" class="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 font-extrabold text-base tracking-wide text-white uppercase shadow-lg shadow-blue-600/30 active:scale-95 transition-all">
+        START GAME
+      </button>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="absolute top-20 left-1/2 -translate-x-1/2 glass-panel rounded-full px-5 py-2 text-xs font-semibold text-white pointer-events-none opacity-0 transition-opacity duration-300 flex items-center space-x-2 z-40 border border-white/20">
+    <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toast-text">Checkpoint Reached!</span>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       SUPER SPHERE 3D - REALISTIC PHYSICS OBSTACLE ENGINE
+       Single-file complete game implementation with Three.js & Custom Physics
+       ========================================================================== */
+
+    // --- Audio Synthesis System (Web Audio API) ---
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.rollingOsc = null;
+        this.rollingGain = null;
+        this.initialized = false;
+      }
+
+      init() {
+        if (this.initialized) return;
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+
+          // Rolling ambient hum synthesizer
+          this.rollingOsc = this.ctx.createOscillator();
+          this.rollingGain = this.ctx.createGain();
+          const filter = this.ctx.createBiquadFilter();
+
+          this.rollingOsc.type = 'triangle';
+          this.rollingOsc.frequency.setValueAtTime(60, this.ctx.currentTime);
+
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(140, this.ctx.currentTime);
+
+          this.rollingGain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+
+          this.rollingOsc.connect(filter);
+          filter.connect(this.rollingGain);
+          this.rollingGain.connect(this.ctx.destination);
+
+          this.rollingOsc.start();
+          this.initialized = true;
+        } catch (e) {
+          console.warn("Web Audio not supported or blocked", e);
+        }
+      }
+
+      setRollingSpeed(speedNormalized) {
+        if (!this.initialized || !this.enabled || !this.ctx) return;
+        const targetVol = Math.min(speedNormalized * 0.18, 0.22);
+        const targetFreq = 40 + Math.min(speedNormalized * 110, 160);
+        const time = this.ctx.currentTime;
+        this.rollingGain.gain.cancelScheduledValues(time);
+        this.rollingGain.gain.linearRampToValueAtTime(targetVol, time + 0.05);
+        this.rollingOsc.frequency.cancelScheduledValues(time);
+        this.rollingOsc.frequency.linearRampToValueAtTime(targetFreq, time + 0.05);
+      }
+
+      playJump() {
+        if (!this.initialized || !this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(620, now + 0.22);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      }
+
+      playBounce() {
+        if (!this.initialized || !this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        const now = this.ctx.currentTime;
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.exponentialRampToValueAtTime(450, now + 0.18);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      }
+
+      playImpact(intensity = 1.0) {
+        if (!this.initialized || !this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(90, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+        const volume = Math.min(Math.max(intensity * 0.3, 0.05), 0.5);
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      }
+
+      playGemPickup() {
+        if (!this.initialized || !this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc1.type = 'triangle';
+        osc2.type = 'sine';
+        osc1.frequency.setValueAtTime(784, now); // G5
+        osc1.frequency.setValueAtTime(1046.5, now + 0.08); // C6
+        osc2.frequency.setValueAtTime(1568, now); // G6
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.3);
+        osc2.stop(now + 0.3);
+      }
+
+      playVictory() {
+        if (!this.initialized || !this.enabled || !this.ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C E G C chord
+        notes.forEach((freq, index) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const start = this.ctx.currentTime + index * 0.12;
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, start);
+          gain.gain.setValueAtTime(0.25, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.6);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(start);
+          osc.stop(start + 0.65);
+        });
+      }
+
+      playGameOver() {
+        if (!this.initialized || !this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const now = this.ctx.currentTime;
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(45, now + 0.5);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.52);
+      }
+
+      toggle() {
+        this.enabled = !this.enabled;
+        if (!this.enabled && this.rollingGain && this.ctx) {
+          this.rollingGain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+        }
+        return this.enabled;
+      }
+    }
+
+    // --- Procedural Realistic Texture Generators ---
+    // Creates rich tactile textures without external asset dependencies
+    const TextureGen = {
+      createAsphaltTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        // Base dark tarmac
+        ctx.fillStyle = '#22252a';
+        ctx.fillRect(0, 0, 512, 512);
+        // Grain speckles
+        for (let i = 0; i < 45000; i++) {
+          const x = Math.random() * 512;
+          const y = Math.random() * 512;
+          const val = Math.floor(Math.random() * 55) + 30;
+          ctx.fillStyle = `rgb(${val},${val + 3},${val + 6})`;
+          ctx.fillRect(x, y, 1.5, 1.5);
+        }
+        // Road edges / hazard dashed lines
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 14;
+        ctx.setLineDash([36, 36]);
+        ctx.beginPath();
+        ctx.moveTo(12, 0);
+        ctx.lineTo(12, 512);
+        ctx.moveTo(500, 0);
+        ctx.lineTo(500, 512);
+        ctx.stroke();
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+      },
+
+      createWoodCrateTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        // Wood base planks
+        ctx.fillStyle = '#925828';
+        ctx.fillRect(0, 0, 256, 256);
+        // Wood grain
+        ctx.strokeStyle = '#6f3c14';
+        ctx.lineWidth = 1.5;
+        for (let y = 0; y < 256; y += 4) {
+          ctx.beginPath();
+          ctx.moveTo(0, y + Math.sin(y * 0.05) * 2);
+          ctx.bezierCurveTo(80, y + 4, 160, y - 4, 256, y);
+          ctx.stroke();
+        }
+        // Planks border and cross reinforcement
+        ctx.lineWidth = 18;
+        ctx.strokeStyle = '#5a300e';
+        ctx.strokeRect(9, 9, 238, 238);
+        ctx.beginPath();
+        ctx.moveTo(18, 18);
+        ctx.lineTo(238, 238);
+        ctx.moveTo(238, 18);
+        ctx.lineTo(18, 238);
+        ctx.stroke();
+        // Steel rivets
+        ctx.fillStyle = '#333';
+        const corners = [[20, 20], [236, 20], [20, 236], [236, 236], [128, 128]];
+        corners.forEach(([cx, cy]) => {
+          ctx.beginPath();
+          ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        const tex = new THREE.CanvasTexture(canvas);
+        return tex;
+      },
+
+      createSphereBrushedMetal() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(0, 0, 512, 512);
+        // High-tech chrome hexagon grid
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.lineWidth = 1.2;
+        const r = 24;
+        const h = r * Math.sqrt(3);
+        for (let y = 0; y < 512 + h; y += h) {
+          for (let x = 0; x < 512 + r * 3; x += r * 3) {
+            ctx.beginPath();
+            for (let a = 0; a < 6; a++) {
+              const angle = (Math.PI / 3) * a;
+              const px = x + r * Math.cos(angle);
+              const py = y + r * Math.sin(angle);
+              if (a === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.stroke();
+          }
+        }
+        // Electric glowing core strip
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
+        ctx.fillRect(0, 246, 512, 20);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+      },
+
+      createBouncyPadTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        // Glowing bounce pad target
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, 256, 256);
+        ctx.lineWidth = 12;
+        ctx.strokeStyle = '#ec4899';
+        ctx.strokeRect(10, 10, 236, 236);
+
+        ctx.fillStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(128, 128, 70, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(128, 128, 38, 0, Math.PI * 2);
+        ctx.fill();
+
+        const tex = new THREE.CanvasTexture(canvas);
+        return tex;
+      }
+    };
+
+    // --- Game Logic, Physics & Rendering Architecture ---
+    class Game {
+      constructor() {
+        this.sound = new SoundEngine();
+        this.canvas = document.getElementById('game-canvas');
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+
+        // Player Physical Sphere Dynamics
+        this.ballRadius = 0.9;
+        this.ballPosition = new THREE.Vector3(0, 2.5, 0);
+        this.ballVelocity = new THREE.Vector3(0, 0, 0);
+        this.ballAngularVelocity = new THREE.Vector3(0, 0, 0);
+        this.onGround = false;
+        this.gravity = -26.0;
+        this.ballFriction = 0.985;
+        this.ballRollTorque = 36.0;
+        this.jumpForce = 11.2;
+        this.maxSpeed = 34.0;
+
+        // Visual Meshes
+        this.playerBallMesh = null;
+        this.platforms = []; // Static colliders: Box3 & Type
+        this.dynamicObjects = []; // Pendulums, moving ramps, crates
+        this.gems = []; // Collectibles
+        this.trampolines = []; // Bouncers
+        this.checkpointPosition = new THREE.Vector3(0, 2.5, 0);
+        this.finishZone = null;
+
+        // Camera Orbit Controls
+        this.cameraDistance = 9.0;
+        this.cameraHeight = 4.2;
+        this.cameraYaw = 0;
+        this.cameraPitch = 0.25;
+        this.isPointerDown = false;
+        this.lastPointerX = 0;
+        this.lastPointerY = 0;
+
+        // Input State
+        this.keys = { forward: false, backward: false, left: false, right: false, jump: false };
+        this.joystickVector = { x: 0, y: 0 };
+
+        // Game Progress State
+        this.currentLevelIndex = 0;
+        this.totalLevels = 3;
+        this.lives = 3;
+        this.gemsCollected = 0;
+        this.totalGemsInLevel = 0;
+        this.gameTime = 0;
+        this.isPlaying = false;
+        this.stageStartLength = 1;
+        this.levelFinishZ = -100;
+
+        // Shared Textures & Materials
+        this.textures = {};
+        this.materials = {};
+
+        this.init();
+      }
+
+      init() {
+        // 1. Setup Three.js Rendering Context
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x0a0f1d);
+        this.scene.fog = new THREE.FogExp2(0x0a0f1d, 0.012);
+
+        this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera.position.set(0, 6, 12);
+
+        this.renderer = new THREE.WebGLRenderer({
+          canvas: this.canvas,
+          antialias: true,
+          powerPreference: "high-performance"
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.15;
+
+        // 2. Generate Textures & Materials
+        this.setupMaterials();
+
+        // 3. Lighting System
+        this.setupLighting();
+
+        // 4. Setup Controls and Interaction Handlers
+        this.setupInputHandlers();
+        this.setupUIHandlers();
+
+        // 5. Initialize Stage 1
+        this.loadLevel(0);
+
+        // 6. Handle View Resizing
+        window.addEventListener('resize', () => this.onWindowResize());
+
+        // 7. Start Render Loop
+        this.lastFrameTime = performance.now();
+        requestAnimationFrame((time) => this.renderLoop(time));
+      }
+
+      setupMaterials() {
+        this.textures.asphalt = TextureGen.createAsphaltTexture();
+        this.textures.asphalt.repeat.set(1, 12);
+        this.textures.wood = TextureGen.createWoodCrateTexture();
+        this.textures.metal = TextureGen.createSphereBrushedMetal();
+        this.textures.metal.repeat.set(3, 2);
+        this.textures.bouncy = TextureGen.createBouncyPadTexture();
+
+        // Ball Material (Metallic reflective PBR)
+        this.materials.player = new THREE.MeshStandardMaterial({
+          map: this.textures.metal,
+          metalness: 0.85,
+          roughness: 0.22,
+          color: 0x90cdf4
+        });
+
+        // Platform Road Material
+        this.materials.road = new THREE.MeshStandardMaterial({
+          map: this.textures.asphalt,
+          roughness: 0.8,
+          metalness: 0.1
+        });
+
+        // Wooden Crate Material
+        this.materials.woodCrate = new THREE.MeshStandardMaterial({
+          map: this.textures.wood,
+          roughness: 0.6,
+          metalness: 0.05
+        });
+
+        // Concrete / Steel Barrier
+        this.materials.barrier = new THREE.MeshStandardMaterial({
+          color: 0xd97706,
+          roughness: 0.4,
+          metalness: 0.6
+        });
+
+        // Glowing Obstacle / Pendulum Bob
+        this.materials.hazard = new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          roughness: 0.3,
+          metalness: 0.8,
+          emissive: 0x7f1d1d,
+          emissiveIntensity: 0.4
+        });
+
+        // Gem Crystal Material
+        this.materials.gem = new THREE.MeshStandardMaterial({
+          color: 0xf59e0b,
+          roughness: 0.1,
+          metalness: 0.9,
+          emissive: 0xd97706,
+          emissiveIntensity: 0.6
+        });
+
+        // Bouncy Trampoline Pad
+        this.materials.bouncy = new THREE.MeshStandardMaterial({
+          map: this.textures.bouncy,
+          roughness: 0.2,
+          metalness: 0.3
+        });
+      }
+
+      setupLighting() {
+        // Ambient fill
+        const ambientLight = new THREE.AmbientLight(0x94a3b8, 0.85);
+        this.scene.add(ambientLight);
+
+        // Primary Sun / Directional Shadow Light
+        this.sunLight = new THREE.DirectionalLight(0xffffff, 1.6);
+        this.sunLight.position.set(25, 45, 20);
+        this.sunLight.castShadow = true;
+        this.sunLight.shadow.mapSize.width = 2048;
+        this.sunLight.shadow.mapSize.height = 2048;
+        this.sunLight.shadow.camera.near = 1;
+        this.sunLight.shadow.camera.far = 140;
+        const d = 35;
+        this.sunLight.shadow.camera.left = -d;
+        this.sunLight.shadow.camera.right = d;
+        this.sunLight.shadow.camera.top = d;
+        this.sunLight.shadow.camera.bottom = -d;
+        this.sunLight.shadow.bias = -0.0005;
+        this.scene.add(this.sunLight);
+
+        // Secondary cyan rim light
+        const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.7);
+        rimLight.position.set(-20, 15, -30);
+        this.scene.add(rimLight);
+
+        // Atmospheric grid backdrop
+        const gridHelper = new THREE.GridHelper(500, 100, 0x1e293b, 0x0f172a);
+        gridHelper.position.y = -35;
+        this.scene.add(gridHelper);
+      }
+
+      createPlayerBall() {
+        if (this.playerBallMesh) {
+          this.scene.remove(this.playerBallMesh);
+        }
+        const geom = new THREE.SphereGeometry(this.ballRadius, 32, 32);
+        this.playerBallMesh = new THREE.Mesh(geom, this.materials.player);
+        this.playerBallMesh.castShadow = true;
+        this.playerBallMesh.receiveShadow = true;
+        this.scene.add(this.playerBallMesh);
+      }
+
+      clearLevel() {
+        // Clean previous objects
+        this.platforms.forEach(p => this.scene.remove(p.mesh));
+        this.dynamicObjects.forEach(d => {
+          this.scene.remove(d.mesh);
+          if (d.chainMesh) this.scene.remove(d.chainMesh);
+        });
+        this.gems.forEach(g => this.scene.remove(g.mesh));
+        this.trampolines.forEach(t => this.scene.remove(t.mesh));
+
+        if (this.finishZone) {
+          this.scene.remove(this.finishZone.mesh);
+          this.scene.remove(this.finishZone.halo);
+        }
+
+        this.platforms = [];
+        this.dynamicObjects = [];
+        this.gems = [];
+        this.trampolines = [];
+        this.finishZone = null;
+      }
+
+      // Build Level Geometry & Physics Elements
+      loadLevel(index) {
+        this.clearLevel();
+        this.currentLevelIndex = index;
+        document.getElementById('level-display').innerText = (index + 1).toString().padStart(2, '0');
+
+        // Reset ball physical dynamics
+        this.ballPosition.set(0, 2.5, 0);
+        this.ballVelocity.set(0, 0, 0);
+        this.ballAngularVelocity.set(0, 0, 0);
+        this.checkpointPosition.copy(this.ballPosition);
+
+        this.createPlayerBall();
+
+        if (index === 0) {
+          this.buildLevel1_BeginnerTrack();
+        } else if (index === 1) {
+          this.buildLevel2_HazardRampTrack();
+        } else {
+          this.buildLevel3_MasterySkyway();
+        }
+
+        // Set tracking length
+        this.stageStartLength = this.ballPosition.z;
+        this.updateHeartsUI();
+        this.updateGemsUI();
+      }
+
+      // --- TRACK 1: THE FOUNDRY PROVING GROUNDS ---
+      buildLevel1_BeginnerTrack() {
+        this.levelFinishZ = -135;
+
+        // Platform 1: Starting strip
+        this.addPlatform(0, 0, -15, 8, 1, 40);
+
+        // Wooden Crates obstacle row
+        this.addCrate(-2, 1.2, -8);
+        this.addCrate(2, 1.2, -8);
+        this.addCrate(0, 1.2, -18);
+        this.addCrate(-1.5, 1.2, -24);
+        this.addCrate(1.5, 1.2, -24);
+
+        // Collectible Gems
+        this.addGem(0, 1.8, -12);
+        this.addGem(0, 1.8, -20);
+        this.addGem(0, 1.8, -28);
+
+        // Trampoline Booster Pad to bridge over gap
+        this.addTrampoline(0, 0.6, -34, 4, 4, 18.0);
+
+        // Platform 2: After the gap
+        this.addPlatform(0, 0, -65, 7, 1, 45);
+
+        // Swinging Pendulum 1
+        this.addPendulum(0, 7.0, -52, 5.0, 3.2, 1.2);
+        this.addPendulum(0, 7.0, -68, 5.0, 3.2, -1.2);
+
+        this.addGem(-2, 1.8, -60);
+        this.addGem(2, 1.8, -60);
+
+        // Narrowing bridge segment
+        this.addPlatform(0, 0, -100, 4.2, 1, 26);
+        this.addCrate(0, 1.2, -98);
+        this.addGem(0, 1.8, -105);
+
+        // Final landing platform & Checkpoint / Finish
+        this.addPlatform(0, 0, -125, 9, 1, 24);
+        this.addFinishZone(0, 0.6, -132);
+      }
+
+      // --- TRACK 2: THE ROLLER INCLINE ---
+      buildLevel2_HazardRampTrack() {
+        this.levelFinishZ = -170;
+
+        // Start platform
+        this.addPlatform(0, 0, -12, 8, 1, 30);
+        this.addGem(0, 1.8, -8);
+        this.addGem(0, 1.8, -18);
+
+        // Incline Ramp upwards
+        this.addRamp(0, 3.5, -40, 7, 1, 28, -0.25);
+
+        // High plateau
+        this.addPlatform(0, 7.0, -68, 7, 1, 30);
+        this.addPendulum(0, 14.0, -62, 5.5, 3.4, 1.5);
+        this.addPendulum(0, 14.0, -74, 5.5, 3.4, -1.5);
+
+        this.addCrate(-1.8, 8.2, -68);
+        this.addCrate(1.8, 8.2, -68);
+        this.addGem(0, 8.8, -68);
+
+        // Trampoline launch pad to lower floating platform
+        this.addTrampoline(0, 7.6, -82, 4.5, 4.5, 16.0);
+
+        // Lower platform
+        this.addPlatform(0, 4.0, -112, 6, 1, 40);
+        this.addCrate(0, 5.2, -104);
+        this.addCrate(-1.5, 5.2, -114);
+        this.addCrate(1.5, 5.2, -114);
+        this.addGem(0, 5.8, -110);
+        this.addGem(0, 5.8, -120);
+
+        // Narrow winding catwalk
+        this.addPlatform(3, 3.0, -142, 3.6, 1, 24);
+        this.addPendulum(3, 10.0, -142, 4.5, 2.8, 1.8);
+        this.addGem(3, 4.8, -142);
+
+        // Goal Platform
+        this.addPlatform(0, 2.0, -165, 8, 1, 22);
+        this.addFinishZone(0, 2.6, -168);
+      }
+
+      // --- TRACK 3: NEON CITADEL MASTERY ---
+      buildLevel3_MasterySkyway() {
+        this.levelFinishZ = -215;
+
+        // Narrow launch strip
+        this.addPlatform(0, 0, -15, 6, 1, 36);
+        this.addGem(0, 1.8, -10);
+        this.addGem(0, 1.8, -22);
+
+        // Dual Trampoline Gauntlet
+        this.addTrampoline(0, 0.6, -32, 4, 4, 19.0);
+
+        // Elevated pillar island 1
+        this.addPlatform(0, 5.0, -55, 6, 1, 16);
+        this.addPendulum(0, 13.0, -55, 5.5, 3.8, 2.2);
+        this.addGem(0, 6.8, -55);
+
+        // Next bounce over deep void
+        this.addTrampoline(0, 5.6, -62, 4, 4, 21.0);
+
+        // Floating island 2 with crates
+        this.addPlatform(0, 10.0, -90, 8, 1, 30);
+        this.addCrate(-2, 11.2, -84);
+        this.addCrate(2, 11.2, -84);
+        this.addCrate(0, 11.2, -92);
+        this.addPendulum(0, 18.0, -96, 6.0, 4.0, -2.0);
+        this.addGem(0, 11.8, -90);
+
+        // Downward Steep Ramp Slide
+        this.addRamp(0, 6.5, -120, 6, 1, 32, 0.22);
+
+        // Mid-way Runway
+        this.addPlatform(0, 3.0, -150, 5, 1, 30);
+        this.addPendulum(0, 11.0, -145, 5.0, 3.5, 2.0);
+        this.addPendulum(0, 11.0, -155, 5.0, 3.5, -2.0);
+        this.addGem(0, 4.8, -150);
+
+        // High velocity Trampoline into final area
+        this.addTrampoline(0, 3.6, -164, 4, 4, 20.0);
+
+        // Final Floating Citadel Island
+        this.addPlatform(0, 6.0, -195, 10, 1, 40);
+        this.addCrate(-2, 7.2, -188);
+        this.addCrate(2, 7.2, -188);
+        this.addCrate(0, 7.2, -198);
+        this.addGem(-2, 7.8, -194);
+        this.addGem(2, 7.8, -194);
+
+        this.addFinishZone(0, 6.6, -210);
+      }
+
+      // --- Geometry Factory Helpers ---
+      addPlatform(x, y, z, width, height, depth) {
+        const geom = new THREE.BoxGeometry(width, height, depth);
+        const mesh = new THREE.Mesh(geom, this.materials.road);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.scene.add(mesh);
+
+        // Store bounding collider definition
+        const halfSize = new THREE.Vector3(width / 2, height / 2, depth / 2);
+        this.platforms.push({
+          mesh,
+          type: 'box',
+          min: new THREE.Vector3(x - halfSize.x, y - halfSize.y, z - halfSize.z),
+          max: new THREE.Vector3(x + halfSize.x, y + halfSize.y, z + halfSize.z)
+        });
+      }
+
+      addRamp(x, y, z, width, height, depth, pitchAngle) {
+        const geom = new THREE.BoxGeometry(width, height, depth);
+        const mesh = new THREE.Mesh(geom, this.materials.road);
+        mesh.position.set(x, y, z);
+        mesh.rotation.x = pitchAngle;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.scene.add(mesh);
+
+        // Oriented bounding box or approximate bounds
+        const bbox = new THREE.Box3().setFromObject(mesh);
+        this.platforms.push({
+          mesh,
+          type: 'ramp',
+          angleX: pitchAngle,
+          min: bbox.min,
+          max: bbox.max
+        });
+      }
+
+      addCrate(x, y, z) {
+        const size = 1.6;
+        const geom = new THREE.BoxGeometry(size, size, size);
+        const mesh = new THREE.Mesh(geom, this.materials.woodCrate);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.scene.add(mesh);
+
+        this.dynamicObjects.push({
+          mesh,
+          type: 'crate',
+          radius: 0.9,
+          position: mesh.position,
+          velocity: new THREE.Vector3(0, 0, 0),
+          angularVelocity: new THREE.Vector3(0, 0, 0),
+          mass: 2.5
+        });
+      }
+
+      addPendulum(anchorX, anchorY, anchorZ, length, amplitude, speed) {
+        // Pivot bar
+        const pivotGeom = new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
+        const pivotMesh = new THREE.Mesh(pivotGeom, this.materials.barrier);
+        pivotMesh.position.set(anchorX, anchorY, anchorZ);
+        pivotMesh.rotation.z = Math.PI / 2;
+        this.scene.add(pivotMesh);
+
+        // Suspension cable
+        const chainGeom = new THREE.CylinderGeometry(0.06, 0.06, length, 8);
+        const chainMesh = new THREE.Mesh(chainGeom, this.materials.barrier);
+
+        // Heavy steel spiked ball
+        const bobGeom = new THREE.SphereGeometry(1.2, 20, 20);
+        const bobMesh = new THREE.Mesh(bobGeom, this.materials.hazard);
+        bobMesh.castShadow = true;
+        this.scene.add(chainMesh);
+        this.scene.add(bobMesh);
+
+        this.dynamicObjects.push({
+          type: 'pendulum',
+          anchor: new THREE.Vector3(anchorX, anchorY, anchorZ),
+          length: length,
+          amplitude: amplitude,
+          speed: speed,
+          mesh: bobMesh,
+          chainMesh: chainMesh,
+          radius: 1.2,
+          currentAngle: 0
+        });
+      }
+
+      addTrampoline(x, y, z, width, depth, launchForce) {
+        const geom = new THREE.BoxGeometry(width, 0.5, depth);
+        const mesh = new THREE.Mesh(geom, this.materials.bouncy);
+        mesh.position.set(x, y, z);
+        mesh.receiveShadow = true;
+        this.scene.add(mesh);
+
+        this.trampolines.push({
+          mesh,
+          x, y, z,
+          halfW: width / 2,
+          halfD: depth / 2,
+          launchForce
+        });
+      }
+
+      addGem(x, y, z) {
+        const geom = new THREE.OctahedronGeometry(0.65, 0);
+        const mesh = new THREE.Mesh(geom, this.materials.gem);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        this.scene.add(mesh);
+
+        this.gems.push({
+          mesh,
+          collected: false,
+          baseY: y,
+          animOffset: Math.random() * Math.PI * 2
+        });
+        this.totalGemsInLevel = this.gems.length;
+      }
+
+      addFinishZone(x, y, z) {
+        // Glowing portal checkpoint
+        const geom = new THREE.TorusGeometry(2.4, 0.35, 16, 32);
+        const haloGeom = new THREE.CylinderGeometry(2.2, 2.2, 0.2, 32);
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0x10b981,
+          emissive: 0x059669,
+          emissiveIntensity: 0.8,
+          roughness: 0.2
+        });
+        const haloMat = new THREE.MeshBasicMaterial({
+          color: 0x34d399,
+          transparent: true,
+          opacity: 0.45,
+          side: THREE.DoubleSide
+        });
+
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(x, y + 2.5, z);
+        mesh.rotation.y = Math.PI / 2;
+
+        const halo = new THREE.Mesh(haloGeom, haloMat);
+        halo.position.set(x, y + 0.1, z);
+
+        this.scene.add(mesh);
+        this.scene.add(halo);
+
+        this.finishZone = { mesh, halo, x, y, z, radius: 2.8 };
+      }
+
+      // --- Physics Simulation Loop ---
+      updatePhysics(dt) {
+        if (!this.isPlaying) return;
+
+        // Substepping physics for crisp and stable collisions
+        const substeps = 4;
+        const subDt = dt / substeps;
+
+        for (let step = 0; step < substeps; step++) {
+          this.stepSimulation(subDt);
+        }
+
+        // Keep Three.js visual mesh matched to physical ball
+        this.playerBallMesh.position.copy(this.ballPosition);
+
+        // Synchronize rotation with angular momentum
+        const deltaRotation = new THREE.Quaternion();
+        const angSpeed = this.ballAngularVelocity.length();
+        if (angSpeed > 0.0001) {
+          const axis = this.ballAngularVelocity.clone().normalize();
+          deltaRotation.setFromAxisAngle(axis, angSpeed * dt);
+          this.playerBallMesh.quaternion.multiplyQuaternions(deltaRotation, this.playerBallMesh.quaternion);
+        }
+
+        // Update Sound Hum to match rolling speed
+        const speed = this.ballVelocity.length();
+        this.sound.setRollingSpeed(this.onGround ? speed : 0.05);
+
+        // Update Speedometer UI
+        const kmh = Math.round(speed * 3.6);
+        document.getElementById('speed-val').innerText = kmh;
+        const progressGauge = Math.min((kmh / 80) * 100, 100);
+        document.getElementById('speed-gauge').setAttribute('stroke-dasharray', `${progressGauge}, 100`);
+
+        // Check falling off platforms
+        if (this.ballPosition.y < -18.0) {
+          this.handleFallOut();
+        }
+
+        // Update Stage Progress Bar
+        const traveled = (this.checkpointPosition.z - this.ballPosition.z);
+        const totalDist = Math.abs(this.levelFinishZ - this.checkpointPosition.z);
+        const pct = Math.min(Math.max(Math.round((traveled / totalDist) * 100), 0), 100);
+        document.getElementById('progress-bar').style.width = `${pct}%`;
+        document.getElementById('progress-text').innerText = `${pct}%`;
+      }
+
+      stepSimulation(dt) {
+        // 1. Gather directional input relative to current camera yaw
+        const forward = new THREE.Vector3(-Math.sin(this.cameraYaw), 0, -Math.cos(this.cameraYaw));
+        const right = new THREE.Vector3(Math.cos(this.cameraYaw), 0, -Math.sin(this.cameraYaw));
+
+        let inputX = (this.keys.right ? 1 : 0) - (this.keys.left ? 1 : 0) + this.joystickVector.x;
+        let inputZ = (this.keys.backward ? 1 : 0) - (this.keys.forward ? 1 : 0) + this.joystickVector.y;
+
+        // Clamp diagonal input to unit length
+        const inputLen = Math.hypot(inputX, inputZ);
+        if (inputLen > 1.0) {
+          inputX /= inputLen;
+          inputZ /= inputLen;
+        }
+
+        const moveForce = new THREE.Vector3()
+          .addScaledVector(right, inputX)
+          .addScaledVector(forward, -inputZ)
+          .multiplyScalar(this.ballRollTorque);
+
+        // Apply rolling torque & acceleration
+        if (this.onGround) {
+          this.ballVelocity.x += moveForce.x * dt;
+          this.ballVelocity.z += moveForce.z * dt;
+
+          // Realistic rolling friction
+          this.ballVelocity.x *= Math.pow(this.ballFriction, dt * 60);
+          this.ballVelocity.z *= Math.pow(this.ballFriction, dt * 60);
+
+          // Calculate Angular Velocity to match ground roll: v = omega x r
+          this.ballAngularVelocity.x = -this.ballVelocity.z / this.ballRadius;
+          this.ballAngularVelocity.z = this.ballVelocity.x / this.ballRadius;
+        } else {
+          // In-air light maneuvering thrusters
+          this.ballVelocity.x += moveForce.x * 0.35 * dt;
+          this.ballVelocity.z += moveForce.z * 0.35 * dt;
+          this.ballVelocity.x *= 0.998;
+          this.ballVelocity.z *= 0.998;
+        }
+
+        // Apply Gravity
+        this.ballVelocity.y += this.gravity * dt;
+
+        // Predict step position
+        this.ballPosition.addScaledVector(this.ballVelocity, dt);
+
+        // 2. Resolve Collisions against Static Platforms & Catwalks
+        this.onGround = false;
+
+        for (let i = 0; i < this.platforms.length; i++) {
+          const p = this.platforms[i];
+
+          if (p.type === 'box') {
+            // Find closest point on Box to Sphere Center
+            const cx = Math.max(p.min.x, Math.min(this.ballPosition.x, p.max.x));
+            const cy = Math.max(p.min.y, Math.min(this.ballPosition.y, p.max.y));
+            const cz = Math.max(p.min.z, Math.min(this.ballPosition.z, p.max.z));
+
+            const dx = this.ballPosition.x - cx;
+            const dy = this.ballPosition.y - cy;
+            const dz = this.ballPosition.z - cz;
+            const distSq = dx * dx + dy * dy + dz * dz;
+
+            if (distSq < this.ballRadius * this.ballRadius && distSq > 0.00001) {
+              const dist = Math.sqrt(distSq);
+              const normalX = dx / dist;
+              const normalY = dy / dist;
+              const normalZ = dz / dist;
+
+              // Push sphere out of penetration
+              const penetration = this.ballRadius - dist;
+              this.ballPosition.x += normalX * penetration;
+              this.ballPosition.y += normalY * penetration;
+              this.ballPosition.z += normalZ * penetration;
+
+              // Reflect velocity along collision normal with restitution
+              const dot = this.ballVelocity.x * normalX + this.ballVelocity.y * normalY + this.ballVelocity.z * normalZ;
+              if (dot < 0) {
+                const bounce = 0.22;
+                this.ballVelocity.x -= (1 + bounce) * dot * normalX;
+                this.ballVelocity.y -= (1 + bounce) * dot * normalY;
+                this.ballVelocity.z -= (1 + bounce) * dot * normalZ;
+
+                if (Math.abs(dot) > 3.0) {
+                  this.sound.playImpact(Math.abs(dot) / 10);
+                }
+              }
+
+              // Check if normal points upwards enough to stand
+              if (normalY > 0.6) {
+                this.onGround = true;
+              }
+            }
+          } else if (p.type === 'ramp') {
+            // Bounding box filter first
+            if (this.ballPosition.x >= p.min.x - this.ballRadius &&
+                this.ballPosition.x <= p.max.x + this.ballRadius &&
+                this.ballPosition.z >= p.min.z - this.ballRadius &&
+                this.ballPosition.z <= p.max.z + this.ballRadius) {
+
+              // Calculate expected ramp surface height at ball's Z
+              const localZ = this.ballPosition.z - p.mesh.position.z;
+              const expectedY = p.mesh.position.y - Math.sin(p.angleX) * localZ + (this.ballRadius + 0.45);
+
+              if (this.ballPosition.y <= expectedY && this.ballPosition.y >= expectedY - 1.5) {
+                this.ballPosition.y = expectedY;
+                if (this.ballVelocity.y < 0) this.ballVelocity.y = 0;
+                this.onGround = true;
+              }
+            }
+          }
+        }
+
+        // 3. Resolve Collisions with Dynamic Crates
+        for (let i = 0; i < this.dynamicObjects.length; i++) {
+          const obj = this.dynamicObjects[i];
+          if (obj.type === 'crate') {
+            const dx = this.ballPosition.x - obj.position.x;
+            const dy = this.ballPosition.y - obj.position.y;
+            const dz = this.ballPosition.z - obj.position.z;
+            const dist = Math.hypot(dx, dy, dz);
+            const minDist = this.ballRadius + obj.radius;
+
+            if (dist < minDist) {
+              const nx = dx / (dist || 1);
+              const ny = dy / (dist || 1);
+              const nz = dz / (dist || 1);
+
+              // Displace crate with momentum
+              const pushForce = 7.0;
+              obj.velocity.x -= nx * pushForce;
+              obj.velocity.z -= nz * pushForce;
+              obj.angularVelocity.x += (Math.random() - 0.5) * 5;
+              obj.angularVelocity.y += (Math.random() - 0.5) * 5;
+
+              // Elastic pushback on ball
+              this.ballVelocity.x += nx * 2.5;
+              this.ballVelocity.z += nz * 2.5;
+
+              this.sound.playImpact(0.8);
+            }
+
+            // Simulate crate friction and drag
+            obj.position.addScaledVector(obj.velocity, dt);
+            obj.velocity.multiplyScalar(0.92);
+            obj.mesh.rotation.x += obj.angularVelocity.x * dt;
+            obj.mesh.rotation.y += obj.angularVelocity.y * dt;
+          }
+        }
+
+        // 4. Resolve Collisions with Trampoline Pads
+        for (let i = 0; i < this.trampolines.length; i++) {
+          const t = this.trampolines[i];
+          if (Math.abs(this.ballPosition.x - t.x) <= t.halfW + this.ballRadius &&
+              Math.abs(this.ballPosition.z - t.z) <= t.halfD + this.ballRadius &&
+              this.ballPosition.y >= t.y - 0.5 && this.ballPosition.y <= t.y + 1.2) {
+            
+            // Catapult upwards!
+            this.ballVelocity.y = t.launchForce;
+            this.sound.playBounce();
+            this.showToast("Super Bounce Booster!", "fa-bolt text-yellow-400");
+          }
+        }
+
+        // 5. Check Obstacle Hits (Swinging Pendulums)
+        for (let i = 0; i < this.dynamicObjects.length; i++) {
+          const obj = this.dynamicObjects[i];
+          if (obj.type === 'pendulum') {
+            const dx = this.ballPosition.x - obj.mesh.position.x;
+            const dy = this.ballPosition.y - obj.mesh.position.y;
+            const dz = this.ballPosition.z - obj.mesh.position.z;
+            const dist = Math.hypot(dx, dy, dz);
+
+            if (dist < this.ballRadius + obj.radius) {
+              // Violent knockback hit
+              const hitDir = new THREE.Vector3(dx, 0.4, dz).normalize();
+              this.ballVelocity.copy(hitDir.multiplyScalar(22.0));
+              this.sound.playImpact(1.6);
+              this.loseLife();
+            }
+          }
+        }
+
+        // 6. Check Collectible Gems
+        for (let i = 0; i < this.gems.length; i++) {
+          const gem = this.gems[i];
+          if (!gem.collected) {
+            const dx = this.ballPosition.x - gem.mesh.position.x;
+            const dy = this.ballPosition.y - gem.mesh.position.y;
+            const dz = this.ballPosition.z - gem.mesh.position.z;
+            if (Math.hypot(dx, dy, dz) < this.ballRadius + 0.8) {
+              gem.collected = true;
+              this.scene.remove(gem.mesh);
+              this.gemsCollected++;
+              this.updateGemsUI();
+              this.sound.playGemPickup();
+              this.showToast("+1 Energy Gem Collected!", "fa-gem text-amber-400");
+            }
+          }
+        }
+
+        // 7. Check Stage Finish Zone
+        if (this.finishZone) {
+          const dx = this.ballPosition.x - this.finishZone.x;
+          const dz = this.ballPosition.z - this.finishZone.z;
+          if (Math.hypot(dx, dz) < this.finishZone.radius) {
+            this.handleStageVictory();
+          }
+        }
+      }
+
+      // Update Pendulum Motions & Floating Gem Animations
+      updateAnimatedObjects(time) {
+        // Pendulum Swings
+        for (let i = 0; i < this.dynamicObjects.length; i++) {
+          const obj = this.dynamicObjects[i];
+          if (obj.type === 'pendulum') {
+            const angle = Math.sin(time * 0.0025 * obj.speed) * (obj.amplitude / obj.length);
+            const bobX = obj.anchor.x + Math.sin(angle) * obj.length;
+            const bobY = obj.anchor.y - Math.cos(angle) * obj.length;
+            obj.mesh.position.set(bobX, bobY, obj.anchor.z);
+
+            // Align suspension chain
+            obj.chainMesh.position.set((obj.anchor.x + bobX) / 2, (obj.anchor.y + bobY) / 2, obj.anchor.z);
+            obj.chainMesh.rotation.z = -angle;
+          }
+        }
+
+        // Gem Hover and Spin
+        for (let i = 0; i < this.gems.length; i++) {
+          const g = this.gems[i];
+          if (!g.collected) {
+            g.mesh.rotation.y += 0.035;
+            g.mesh.position.y = g.baseY + Math.sin(time * 0.004 + g.animOffset) * 0.25;
+          }
+        }
+
+        // Finish Portal Spinning
+        if (this.finishZone) {
+          this.finishZone.mesh.rotation.z += 0.02;
+          this.finishZone.halo.rotation.y += 0.015;
+        }
+      }
+
+      // --- Camera Spring & Smooth Follow System ---
+      updateCamera() {
+        // Calculate camera position based on spherical coordinates centered on ball
+        const hDistance = this.cameraDistance * Math.cos(this.cameraPitch);
+        const targetCamX = this.ballPosition.x + hDistance * Math.sin(this.cameraYaw);
+        const targetCamY = this.ballPosition.y + this.cameraDistance * Math.sin(this.cameraPitch) + 1.2;
+        const targetCamZ = this.ballPosition.z + hDistance * Math.cos(this.cameraYaw);
+
+        // Smooth camera lerp damping
+        this.camera.position.lerp(new THREE.Vector3(targetCamX, targetCamY, targetCamZ), 0.12);
+
+        // Look at point slightly above sphere center
+        const lookTarget = new THREE.Vector3(this.ballPosition.x, this.ballPosition.y + 0.8, this.ballPosition.z);
+        this.camera.lookAt(lookTarget);
+
+        // Keep directional sun shadow focused over player
+        this.sunLight.position.set(this.ballPosition.x + 22, this.ballPosition.y + 40, this.ballPosition.z + 18);
+        this.sunLight.target.position.copy(this.ballPosition);
+        this.sunLight.target.updateMatrixWorld();
+      }
+
+      // --- Jump & Action Triggers ---
+      triggerJump() {
+        if (!this.isPlaying) return;
+        if (this.onGround) {
+          this.ballVelocity.y = this.jumpForce;
+          this.onGround = false;
+          this.sound.playJump();
+        }
+      }
+
+      // --- Health & Game Over Logic ---
+      loseLife() {
+        this.lives--;
+        this.updateHeartsUI();
+        if (this.lives <= 0) {
+          this.handleGameOver();
+        } else {
+          this.showToast("Damage Taken! Be careful!", "fa-triangle-exclamation text-rose-500");
+        }
+      }
+
+      handleFallOut() {
+        this.sound.playImpact(1.2);
+        this.loseLife();
+        if (this.lives > 0) {
+          // Respawn at starting stage checkpoint
+          this.ballPosition.copy(this.checkpointPosition);
+          this.ballPosition.y += 2.0;
+          this.ballVelocity.set(0, 0, 0);
+          this.ballAngularVelocity.set(0, 0, 0);
+          this.showToast("Respawned at Checkpoint!", "fa-rotate-right text-cyan-400");
+        }
+      }
+
+      handleGameOver() {
+        this.isPlaying = false;
+        this.sound.playGameOver();
+        this.showModal(
+          "MISSION FAILED",
+          "Your sphere suffered catastrophic damage. Review the course obstacles and try again!",
+          "RETRY MISSION",
+          "fa-skull text-rose-500",
+          () => {
+            this.lives = 3;
+            this.gemsCollected = 0;
+            this.loadLevel(this.currentLevelIndex);
+            this.startGame();
+          }
+        );
+      }
+
+      handleStageVictory() {
+        this.isPlaying = false;
+        this.sound.playVictory();
+
+        if (this.currentLevelIndex + 1 < this.totalLevels) {
+          this.showModal(
+            "STAGE CLEAR!",
+            `Awesome run! You completed Stage ${this.currentLevelIndex + 1} with ${this.gemsCollected} gems collected. Ready for the next challenge?`,
+            "NEXT STAGE",
+            "fa-trophy text-amber-400",
+            () => {
+              this.loadLevel(this.currentLevelIndex + 1);
+              this.startGame();
+            }
+          );
+        } else {
+          this.showModal(
+            "CHAMPION OF THE SPHERE!",
+            `Incredible achievement! You mastered all 3 physics obstacle courses. Total Gems Gathered: ${this.gemsCollected}. You are a true rolling master!`,
+            "PLAY AGAIN",
+            "fa-crown text-yellow-300",
+            () => {
+              this.lives = 3;
+              this.gemsCollected = 0;
+              this.loadLevel(0);
+              this.startGame();
+            }
+          );
+        }
+      }
+
+      // --- UI Management ---
+      updateHeartsUI() {
+        const container = document.getElementById('hearts-container');
+        container.innerHTML = '';
+        for (let i = 0; i < 3; i++) {
+          const heart = document.createElement('i');
+          if (i < this.lives) {
+            heart.className = 'fa-solid fa-heart text-base text-rose-500';
+          } else {
+            heart.className = 'fa-regular fa-heart text-base text-slate-600';
+          }
+          container.appendChild(heart);
+        }
+      }
+
+      updateGemsUI() {
+        document.getElementById('gems-display').innerText = this.gemsCollected;
+      }
+
+      showToast(message, iconClass) {
+        const toast = document.getElementById('toast');
+        const toastText = document.getElementById('toast-text');
+        const toastIcon = document.getElementById('toast-icon');
+
+        toastText.innerText = message;
+        toastIcon.className = `fa-solid ${iconClass}`;
+        toast.style.opacity = '1';
+        toast.style.transform = 'translate(-50%, 0px)';
+
+        if (this.toastTimeout) clearTimeout(this.toastTimeout);
+        this.toastTimeout = setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translate(-50%, -10px)';
+        }, 2200);
+      }
+
+      showModal(title, desc, buttonText, iconClass, onAction) {
+        const modal = document.getElementById('overlay-screen');
+        const modalTitle = document.getElementById('modal-title');
+        const modalDesc = document.getElementById('modal-desc');
+        const modalBtn = document.getElementById('modal-action-btn');
+        const modalIcon = document.getElementById('modal-icon');
+
+        modalTitle.innerText = title;
+        modalDesc.innerText = desc;
+        modalBtn.innerText = buttonText;
+        modalIcon.className = `fa-solid ${iconClass}`;
+
+        modal.classList.remove('hidden');
+        modal.style.opacity = '1';
+
+        modalBtn.onclick = () => {
+          modal.style.opacity = '0';
+          setTimeout(() => {
+            modal.classList.add('hidden');
+            if (onAction) onAction();
+          }, 250);
+        };
+      }
+
+      startGame() {
+        this.sound.init();
+        this.isPlaying = true;
+      }
+
+      // --- Input Listeners & Touch Controls ---
+      setupInputHandlers() {
+        // Keyboard inputs
+        window.addEventListener('keydown', (e) => {
+          if (!this.isPlaying) return;
+          this.sound.init(); // audio unlock policy
+          switch (e.code) {
+            case 'KeyW':
+            case 'ArrowUp':
+              this.keys.forward = true;
+              break;
+            case 'KeyS':
+            case 'ArrowDown':
+              this.keys.backward = true;
+              break;
+            case 'KeyA':
+            case 'ArrowLeft':
+              this.keys.left = true;
+              break;
+            case 'KeyD':
+            case 'ArrowRight':
+              this.keys.right = true;
+              break;
+            case 'Space':
+              e.preventDefault();
+              this.triggerJump();
+              break;
+          }
+        });
+
+        window.addEventListener('keyup', (e) => {
+          switch (e.code) {
+            case 'KeyW':
+            case 'ArrowUp':
+              this.keys.forward = false;
+              break;
+            case 'KeyS':
+            case 'ArrowDown':
+              this.keys.backward = false;
+              break;
+            case 'KeyA':
+            case 'ArrowLeft':
+              this.keys.left = false;
+              break;
+            case 'KeyD':
+            case 'ArrowRight':
+              this.keys.right = false;
+              break;
+          }
+        });
+
+        // Mouse & Touch Orbit Camera
+        const onPointerDown = (clientX, clientY) => {
+          this.isPointerDown = true;
+          this.lastPointerX = clientX;
+          this.lastPointerY = clientY;
+        };
+
+        const onPointerMove = (clientX, clientY) => {
+          if (!this.isPointerDown) return;
+          const deltaX = clientX - this.lastPointerX;
+          const deltaY = clientY - this.lastPointerY;
+
+          this.cameraYaw -= deltaX * 0.0055;
+          this.cameraPitch = Math.max(0.08, Math.min(1.2, this.cameraPitch + deltaY * 0.0055));
+
+          this.lastPointerX = clientX;
+          this.lastPointerY = clientY;
+        };
+
+        const onPointerUp = () => {
+          this.isPointerDown = false;
+        };
+
+        window.addEventListener('mousedown', (e) => {
+          if (e.target.closest('#hud') || e.target.closest('#overlay-screen')) return;
+          onPointerDown(e.clientX, e.clientY);
+        });
+        window.addEventListener('mousemove', (e) => onPointerMove(e.clientX, e.clientY));
+        window.addEventListener('mouseup', onPointerUp);
+
+        // Touch Orbit on Canvas
+        this.canvas.addEventListener('touchstart', (e) => {
+          if (e.touches.length > 0) {
+            onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+
+        this.canvas.addEventListener('touchmove', (e) => {
+          if (e.touches.length > 0) {
+            onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+
+        this.canvas.addEventListener('touchend', onPointerUp);
+
+        // Mobile Onscreen Virtual Joystick
+        this.setupVirtualJoystick();
+      }
+
+      setupVirtualJoystick() {
+        const zone = document.getElementById('joystick-zone');
+        const knob = document.getElementById('joystick-knob');
+        if (!zone || !knob) return;
+
+        // Auto display joystick if touch device detected
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+          zone.classList.remove('hidden');
+        }
+
+        let touchId = null;
+        const maxDist = 42;
+        let rect = zone.getBoundingClientRect();
+
+        const handleTouch = (touch) => {
+          const dx = touch.clientX - (rect.left + rect.width / 2);
+          const dy = touch.clientY - (rect.top + rect.height / 2);
+          const dist = Math.hypot(dx, dy);
+          const angle = Math.atan2(dy, dx);
+
+          const clampedDist = Math.min(dist, maxDist);
+          const knobX = Math.cos(angle) * clampedDist;
+          const knobY = Math.sin(angle) * clampedDist;
+
+          knob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+          this.joystickVector.x = knobX / maxDist;
+          this.joystickVector.y = knobY / maxDist;
+        };
+
+        zone.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          this.sound.init();
+          rect = zone.getBoundingClientRect();
+          const touch = e.changedTouches[0];
+          touchId = touch.identifier;
+          handleTouch(touch);
+        });
+
+        zone.addEventListener('touchmove', (e) => {
+          e.preventDefault();
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === touchId) {
+              handleTouch(e.changedTouches[i]);
+              break;
+            }
+          }
+        });
+
+        const resetJoystick = (e) => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            if (e.changedTouches[i].identifier === touchId) {
+              touchId = null;
+              knob.style.transform = 'translate(0px, 0px)';
+              this.joystickVector.x = 0;
+              this.joystickVector.y = 0;
+              break;
+            }
+          }
+        };
+
+        zone.addEventListener('touchend', resetJoystick);
+        zone.addEventListener('touchcancel', resetJoystick);
+      }
+
+      setupUIHandlers() {
+        // Modal Action Button
+        document.getElementById('modal-action-btn').addEventListener('click', () => {
+          this.startGame();
+          document.getElementById('overlay-screen').classList.add('hidden');
+        });
+
+        // Jump Onscreen Button
+        const jumpBtn = document.getElementById('btn-jump');
+        jumpBtn.addEventListener('click', () => {
+          this.sound.init();
+          this.triggerJump();
+        });
+        jumpBtn.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          this.sound.init();
+          this.triggerJump();
+        });
+
+        // Reset Camera View Button
+        document.getElementById('btn-camera-reset').addEventListener('click', () => {
+          this.cameraYaw = 0;
+          this.cameraPitch = 0.28;
+        });
+
+        // Audio Toggle Button
+        const audioBtn = document.getElementById('audio-toggle-btn');
+        const audioIcon = document.getElementById('audio-icon');
+        audioBtn.addEventListener('click', () => {
+          this.sound.init();
+          const active = this.sound.toggle();
+          if (active) {
+            audioIcon.className = 'fa-solid fa-volume-high text-cyan-400';
+            this.showToast("Audio On", "fa-volume-high text-cyan-400");
+          } else {
+            audioIcon.className = 'fa-solid fa-volume-xmark text-slate-500';
+            this.showToast("Audio Muted", "fa-volume-xmark text-slate-500");
+          }
+        });
+      }
+
+      onWindowResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      // --- Main Render and Animation Loop ---
+      renderLoop(currentTime) {
+        requestAnimationFrame((time) => this.renderLoop(time));
+
+        const dt = Math.min((currentTime - this.lastFrameTime) / 1000, 0.08);
+        this.lastFrameTime = currentTime;
+
+        if (this.isPlaying) {
+          this.gameTime += dt;
+          // Format MM:SS.S
+          const mins = Math.floor(this.gameTime / 60);
+          const secs = (this.gameTime % 60).toFixed(1);
+          document.getElementById('timer-display').innerText =
+            `${mins.toString().padStart(2, '0')}:${secs.padStart(4, '0')}`;
+
+          this.updatePhysics(dt);
+        }
+
+        this.updateAnimatedObjects(currentTime);
+        this.updateCamera();
+
+        this.renderer.render(this.scene, this.camera);
+      }
+    }
+
+    // Start Engine when Window is Loaded
+    window.addEventListener('load', () => {
+      window.gameEngine = new Game();
+    });
+  </script>
+</body>
+</html>
